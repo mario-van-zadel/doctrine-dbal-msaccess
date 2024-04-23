@@ -43,11 +43,11 @@ final class Connection
                 'name' => $column['COLUMN_NAME'],
                 'comment' => $this->sanitizeComment($column['REMARKS']),
                 'type' => \strtolower($column['TYPE_NAME']),
-                'length' => (int) $column['COLUMN_SIZE'],
+                'length' => (int)$column['COLUMN_SIZE'],
                 'notnull' => '1' !== $column['NULLABLE'],
                 'default' => null,
-                'scale' => (int) $column['COLUMN_SIZE'],
-                'precision' => (int) $column['COLUMN_SIZE'],
+                'scale' => (int)$column['COLUMN_SIZE'],
+                'precision' => (int)$column['COLUMN_SIZE'],
                 'autoincrement' => 'COUNTER' === $column['TYPE_NAME'],
             ];
         }

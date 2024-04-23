@@ -4,14 +4,16 @@ declare(strict_types=1);
 namespace ZoiloMora\Doctrine\DBAL\Driver\MicrosoftAccess\PDO;
 
 use Doctrine\DBAL\Driver\Connection as ConnectionInterface;
-use Doctrine\DBAL\Driver\ServerInfoAwareConnection;
 use Doctrine\DBAL\ParameterType;
 use PDO;
 use PDOStatement;
+use ZoiloMora\Doctrine\DBAL\Driver\MicrosoftAccess\Result;
 use ZoiloMora\Doctrine\DBAL\Driver\MicrosoftAccess\Statement;
 
-final class Connection extends PDO implements ConnectionInterface, ServerInfoAwareConnection
+final class Connection implements ConnectionInterface
 {
+    private readonly PDO $pdo;
+
     private ?bool $transactionsSupport = null;
     private ?string $charsetToEncoding = null;
 
@@ -20,10 +22,8 @@ final class Connection extends PDO implements ConnectionInterface, ServerInfoAwa
      */
     public function __construct($dsn, $user = null, $password = null, ?array $options = null)
     {
-        parent::__construct($dsn, (string)$user, (string)$password, (array)$options);
-
-        $this->setAttribute(PDO::ATTR_STATEMENT_CLASS, [Statement::class, []]);
-        $this->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->pdo = new PDO($dsn, (string)$user, (string)$password, (array)$options);
+        $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
         $this->charsetToEncoding = \array_key_exists('charset', $options)
             ? $options['charset']
@@ -38,9 +38,9 @@ final class Connection extends PDO implements ConnectionInterface, ServerInfoAwa
     /**
      * {@inheritdoc}
      */
-    public function quote($value, $type = ParameterType::STRING)
+    public function quote(string $value): string
     {
-        $val = parent::quote($value, $type);
+        $val = $this->pdo->quote($value);
 
         // Fix for a driver version terminating all values with null byte
         if (false !== \strpos($val, "\0")) {
@@ -48,6 +48,22 @@ final class Connection extends PDO implements ConnectionInterface, ServerInfoAwa
         }
 
         return $val;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function exec(string $sql): int
+    {
+        try {
+            $result = $this->pdo->exec($sql);
+
+            assert($result !== false);
+
+            return $result;
+        } catch (PDOException $exception) {
+            throw Exception::new($exception);
+        }
     }
 
     /**
@@ -63,52 +79,52 @@ final class Connection extends PDO implements ConnectionInterface, ServerInfoAwa
         return false;
     }
 
-    public function beginTransaction(): bool
+    public function beginTransaction(): void
     {
-        return true === $this->transactionsSupported()
-            ? parent::beginTransaction()
+        $this->transactionsSupported()
+            ? $this->pdo->beginTransaction()
             : $this->exec('BEGIN TRANSACTION');
     }
 
-    public function commit(): bool
+    public function commit(): void
     {
-        return true === $this->transactionsSupported()
-            ? parent::commit()
+        $this->transactionsSupported()
+            ? $this->pdo->commit()
             : $this->exec('COMMIT TRANSACTION');
     }
 
-    public function rollback(): bool
+    public function rollback(): void
     {
-        return true === $this->transactionsSupported()
-            ? parent::rollback()
+        $this->transactionsSupported()
+            ? $this->pdo->rollback()
             : $this->exec('ROLLBACK TRANSACTION');
     }
 
     /**
      * {@inheritdoc}
      */
-    public function query(...$args): PDOStatement
+    public function query(...$args): Result
     {
-        $statement = parent::query(...$args);
+        $pdoStatement = $this->pdo->query(...$args);
 
-        \assert($statement instanceof Statement);
+        \assert($pdoStatement instanceof PDOStatement);
+
+        $statement = new Statement($pdoStatement);
         $statement->setCharsetToEncoding($this->charsetToEncoding);
 
-        return $statement;
+        return new Result($statement);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function prepare($statement, $options = null)
+    public function prepare(string $sql): Statement
     {
-        if (null === $options) {
-            $options = [];
-        }
+        $pdoStatement = $this->pdo->prepare($sql);
 
-        $statement = parent::prepare($statement, $options);
+        \assert($pdoStatement instanceof PDOStatement);
 
-        \assert($statement instanceof Statement);
+        $statement = new Statement($pdoStatement);
         $statement->setCharsetToEncoding($this->charsetToEncoding);
 
         return $statement;
@@ -121,9 +137,9 @@ final class Connection extends PDO implements ConnectionInterface, ServerInfoAwa
         }
 
         try {
-            parent::beginTransaction();
+            $this->pdo->beginTransaction();
 
-            parent::commit();
+            $this->pdo->commit();
 
             $this->transactionsSupport = true;
         } catch (\PDOException $e) {
@@ -131,5 +147,13 @@ final class Connection extends PDO implements ConnectionInterface, ServerInfoAwa
         }
 
         return $this->transactionsSupport;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getNativeConnection()
+    {
+        return $this->pdo;
     }
 }

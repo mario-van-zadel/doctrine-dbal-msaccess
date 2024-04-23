@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 namespace ZoiloMora\Doctrine\DBAL\Platforms;
 
-use Doctrine\DBAL\Platforms\SQLServer2012Platform;
+use Doctrine\DBAL\Platforms\SQLServerPlatform;
 use ZoiloMora\Doctrine\DBAL\Platforms\Keywords\MicrosoftAccessKeywords;
 
-final class MicrosoftAccessPlatform extends SQLServer2012Platform
+final class MicrosoftAccessPlatform extends SQLServerPlatform
 {
     public function getName(): string
     {
@@ -32,7 +32,7 @@ final class MicrosoftAccessPlatform extends SQLServer2012Platform
     /**
      * {@inheritDoc}
      */
-    public function getDateTimeFormatString()
+    public function getDateTimeFormatString(): string
     {
         return 'Y-m-d H:i';
     }
@@ -40,7 +40,7 @@ final class MicrosoftAccessPlatform extends SQLServer2012Platform
     /**
      * {@inheritDoc}
      */
-    public function getDateFormatString()
+    public function getDateFormatString(): string
     {
         return 'Y-m-d';
     }
@@ -48,7 +48,7 @@ final class MicrosoftAccessPlatform extends SQLServer2012Platform
     /**
      * {@inheritDoc}
      */
-    public function getTimeFormatString()
+    public function getTimeFormatString(): string
     {
         return 'H:i:s';
     }
@@ -56,7 +56,7 @@ final class MicrosoftAccessPlatform extends SQLServer2012Platform
     /**
      * {@inheritDoc}
      */
-    protected function initializeDoctrineTypeMappings()
+    protected function initializeDoctrineTypeMappings(): void
     {
         $this->doctrineTypeMapping = [
             'bit' => 'boolean',
@@ -84,7 +84,7 @@ final class MicrosoftAccessPlatform extends SQLServer2012Platform
      *
      * @see \Doctrine\DBAL\Platforms\SQLServerPlatform::doModifyLimitQuery
      */
-    protected function doModifyLimitQuery($query, $limit, $offset = null)
+    protected function doModifyLimitQuery(string $query, ?int $limit, int $offset): string
     {
         $where = [];
 

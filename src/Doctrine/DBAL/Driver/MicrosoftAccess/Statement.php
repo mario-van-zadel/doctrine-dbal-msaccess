@@ -3,13 +3,22 @@ declare(strict_types=1);
 
 namespace ZoiloMora\Doctrine\DBAL\Driver\MicrosoftAccess;
 
+use Doctrine\DBAL\Driver\PDO\Exception;
+use Doctrine\DBAL\Driver\Statement as StatementInterface;
 use Doctrine\DBAL\ParameterType;
+use PDO;
+use PDOStatement;
 
-final class Statement extends \Doctrine\DBAL\Driver\PDO\Statement
+final class Statement implements StatementInterface
 {
     private const CHARSET_FROM_ENCODING = 'Windows-1252';
 
     private ?string $charsetToEncoding = null;
+
+    /** @internal The statement can be only instantiated by its driver connection. */
+    public function __construct(private readonly PDOStatement $pdoStatement)
+    {
+    }
 
     public function bindParam($param, &$variable, $type = ParameterType::STRING, $length = null, $driverOptions = null)
     {
@@ -29,7 +38,31 @@ final class Statement extends \Doctrine\DBAL\Driver\PDO\Statement
                 break;
         }
 
-        return parent::bindParam($param, $variable, $type, $length, $driverOptions);
+        $pdoType = $this->convertParamType($type);
+
+        try {
+            $this->pdoStatement->bindValue($param, $value, $pdoType);
+        } catch (PDOException $exception) {
+            throw Exception::new($exception);
+        }
+    }
+
+    public function bindValue(int|string $param, mixed $value, ParameterType $type): void
+    {
+        $pdoType = $this->convertParamType($type);
+
+        try {
+            $this->pdoStatement->bindValue($param, $value, $pdoType);
+        } catch (PDOException $exception) {
+            throw Exception::new($exception);
+        }
+    }
+
+    public function execute(): Result
+    {
+        $this->pdoStatement->execute();
+
+        return new Result($this);
     }
 
     public function setCharsetToEncoding(?string $charset): void
@@ -40,42 +73,46 @@ final class Statement extends \Doctrine\DBAL\Driver\PDO\Statement
     public function fetchOne()
     {
         return $this->convertStringEncoding(
-            parent::fetchOne(),
+            $this->pdoStatement->fetch(PDO::FETCH_COLUMN)
         );
     }
 
     public function fetchNumeric()
     {
         return $this->convertArrayEncoding(
-            parent::fetchNumeric(),
+            $this->pdoStatement->fetch(PDO::FETCH_NUM)
         );
     }
 
     public function fetchAssociative()
     {
-        return $this->convertArrayEncoding(
-            parent::fetchAssociative(),
-        );
+        $result = $this->pdoStatement->fetch(PDO::FETCH_ASSOC);
+
+        if (!$result) {
+            return $result;
+        }
+
+        return $this->convertArrayEncoding($result);
     }
 
     public function fetchAllNumeric(): array
     {
         return $this->convertCollectionEncoding(
-            parent::fetchAllNumeric(),
+            $this->pdoStatement->fetchAll(PDO::FETCH_NUM)
         );
     }
 
     public function fetchFirstColumn(): array
     {
         return $this->convertArrayEncoding(
-            parent::fetchFirstColumn(),
+            $this->pdoStatement->fetchColumn()
         );
     }
 
     public function fetchAllAssociative(): array
     {
         return $this->convertCollectionEncoding(
-            parent::fetchAllAssociative(),
+            $this->pdoStatement->fetchAll(PDO::FETCH_ASSOC)
         );
     }
 
@@ -111,5 +148,38 @@ final class Statement extends \Doctrine\DBAL\Driver\PDO\Statement
         }
 
         return \mb_convert_encoding($value, $this->charsetToEncoding, self::CHARSET_FROM_ENCODING);
+    }
+
+    public function rowCount(): int
+    {
+        return $this->pdoStatement->rowCount();
+    }
+
+    public function columnCount(): int
+    {
+        return $this->pdoStatement->columnCount();
+    }
+
+    public function closeCursor(): bool
+    {
+        return $this->pdoStatement->closeCursor();
+    }
+
+    /**
+     * Converts DBAL parameter type to PDO parameter type
+     *
+     * @psalm-return PDO::PARAM_*
+     */
+    private function convertParamType(ParameterType $type): int
+    {
+        return match ($type) {
+            ParameterType::NULL => PDO::PARAM_NULL,
+            ParameterType::INTEGER => PDO::PARAM_INT,
+            ParameterType::STRING,
+            ParameterType::ASCII => PDO::PARAM_STR,
+            ParameterType::BINARY,
+            ParameterType::LARGE_OBJECT => PDO::PARAM_LOB,
+            ParameterType::BOOLEAN => PDO::PARAM_BOOL,
+        };
     }
 }
